@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze-Mapping Robot: Modified DFS Demo</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --bg-deep: #05070a;
+            --panel-bg: rgba(15, 20, 30, 0.85);
+            --border-glow: rgba(0, 242, 255, 0.3);
+            --text-primary: #e0e6ed;
+            --accent-cyan: #00f2ff;
+            --accent-orange: #ff9d00;
+            --accent-red: #ff4d4d;
+            --cell-unvisited: #1a1f26;
+            --cell-visited: #2a3d4d;
+            --cell-wall: #0a0c10;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(0, 242, 255, 0.05) 0%, transparent 70%);
+        }
+
+        /* SIDEBAR DASHBOARD */
+        .sidebar {
+            width: 350px;
+            background: var(--panel-bg);
+            border-right: 1px solid var(--border-glow);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 10;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 2px solid var(--accent-cyan);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .data-card {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .data-label {
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+        }
+
+        .data-value-list {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            max-height: 100px;
+            overflow-y: auto;
+            word-wrap: break-word;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            background: rgba(0, 242, 255, 0.1);
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            margin-top: 5px;
+        }
+
+        /* MAIN CONTENT AREA */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            position: relative;
+        }
+
+        #maze-container {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            grid-template-rows: repeat(10, 40px);
+            gap: 2px;
+            background: var(--border-glow);
+            padding: 4px;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0, 242, 255, 0.1);
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: background 0.3s ease;
+        }
+
+        .cell.wall { background: var(--cell-wall); }
+        .cell.unvisited { background: var(--cell-unvisited); }
+        .cell.visited { background: var(--cell-visited); }
+        .cell.start { background: rgba(0, 255, 0, 0.1); border: 1px inset rgba(0,255,0,0.3); }
+
+        .cell.visited::after {
+            content: '';
+            width: 4px;
+            height: 4px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
+        /* THE ROBOT */
+        #robot {
+            width: 30px;
+            height: 30px;
+            background: var(--accent-red);
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+            position: absolute;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: drop-shadow(0 0 10px var(--accent-red));
+            z-index: 5;
+        }
+
+        /* FOOTER CONTROLS */
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel-bg);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 1px solid var(--border-glow);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        button {
+            background: transparent;
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--accent-cyan);
+            color: var(--bg-deep);
+            box-shadow: 0 0 15px var(--accent-cyan);
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 150px;
+        }
+
+        input[type="range"] {
+            accent-color: var(--accent-cyan);
+            cursor: pointer;
+        }
+
+        /* CUSTOM SCROLLBAR */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 10px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h1>Autonomous Mapper</h1>
+        
+        <div class="data-card">
+            <span class="data-label">Current Action</span>
+            <div id="status-label" class="status-badge">Idle</div>
+            <div id="action-desc" style="font-size: 0.7rem; margin-top: 5px; opacity: 0.7;">Ready to explore</div>
+        </div>
+
+        <div class="data-card">
+            <span class="data-label">Visited List</span>
+            <div id="visited-list" class="data-value-list">[]</div>
+        </div>
+
+        <div class="data-card">
+            <span class="data-label">Debt List (Junctions)</span>
+            <div id="debt-list" class="data-value-list">[]</div>
+        </div>
+
+        <div class="data-card">
+            <span class="data-label">Debt Cor (Pending Coords)</span>
+            <div id="debt-cor" class="data-value-list">[]</div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div id="maze-container">
+            <!-- Grid generated by JS -->
+        </div>
+        <div id="robot"></div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-start">Start</button>
+        <button id="btn-pause" disabled>Pause</button>
+        <button id="btn-step">Step</button>
+        <button id="btn-reset">Reset</button>
+
+        <div class="slider-group">
+            <span class="data-label" style="display: flex; justify-content: space-between;">Speed <span id="speed-val">500ms</span></span>
+            <input type="range" id="speed-slider" min="50" max="2000" step="50" value="500" dir="rtl">
+        </div>
+    </div>
+
+    <script>
+        // MAZE CONFIGURATION (0=path, 1=wall)
+        // 15x10 GRID
+        const MAZE_MAP = [
+            [0,0,1,0,0,0,0,0,1,0,0,0,0,0,0],
+            [1,0,1,0,1,1,1,0,1,0,1,1,1,1,0],
+            [0,0,0,0,1,0,0,0,0,0,1,0,0,0,0],
+            [0,1,1,1,1,0,1,1,1,1,1,0,1,1,1],
+            [0,0,0,0,0,0,1,0,0,0,0,0,1,0,0],
+            [1,1,1,0,1,1,1,0,1,1,1,1,1,0,1],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+            [0,0,0,0,1,0,0,0,1,0,0,0,0,0,0],
+            [1,1,1,0,0,0,1,0,0,0,1,1,1,1,1]
+        ];
+
+        const ROWS = 10;
+        const COLS = 15;
+        const CELL_SIZE = 40;
+
+        // Robot Directions: N(0), E(1), S(2), W(3)
+        const DIRS = [
+            { dr: -1, dc: 0, angle: 0 },    // North
+            { dr: 0, dc: 1, angle: 90 },   // East
+            { dr: 1, dc: 0, angle: 180 },  // South
+            { dr: 0, dc: -1, angle: 270 }  // West
+        ];
+
+        class RobotDemo {
+            constructor() {
+                this.grid = [];
+                this.robotPos = { r: 0, c: 0 };
+                this.robotHeading = 1; // Start facing East
+                this.visitedList = [];
+                this.debtList = []; // Junctions with untaken paths
+                this.debtCor = [];  // Specific untaken cells
+                this.pathHistory = []; // Stack for simple path tracking (to return home)
+                
+                this.isPaused = true;
+                this.isFinished = false;
+                this.isReturningHome = false;
+                this.currentPathToTarget = []; // Used for backtracking/homing
+                
+                this.speed = 500;
+                this.timer = null;
+
+                this.initUI();
+                this.reset();
+            }
+
+            initUI() {
+                const container = document.getElementById('maze-container');
+                container.innerHTML = '';
+                for (let r = 0; r < ROWS; r++) {
+                    this.grid[r] = [];
+                    for (let c = 0; c < COLS; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell ' + (MAZE_MAP[r][c] === 1 ? 'wall' : 'unvisited');
+                        if (r === 0 && c === 0) cell.classList.add('start');
+                        container.appendChild(cell);
+                        this.grid[r][c] = cell;
+                    }
+                }
+
+                document.getElementById('btn-start').onclick = () => this.start();
+                document.getElementById('btn-pause').onclick = () => this.pause();
+                document.getElementById('btn-step').onclick = () => this.step();
+                document.getElementById('btn-reset').onclick = () => this.reset();
+                document.getElementById('speed-slider').oninput = (e) => {
+                    this.speed = parseInt(e.target.value);
+                    document.getElementById('speed-val').innerText = this.speed + 'ms';
+                };
+            }
+
+            reset() {
+                this.pause();
+                this.robotPos = { r: 0, c: 0 };
+                this.robotHeading = 1;
+                this.visitedList = [];
+                this.debtList = [];
+                this.debtCor = [];
+                this.pathHistory = [];
+                this.isFinished = false;
+                this.isReturningHome = false;
+                this.currentPathToTarget = [];
+
+                // Reset Grid visuals
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        this.grid[r][c].classList.remove('visited');
+                        this.grid[r][c].classList.add(MAZE_MAP[r][c] === 1 ? 'wall' : 'unvisited');
+                    }
+                }
+
+                this.markVisited(0, 0);
+                this.updateRobotUI();
+                this.updateDataUI();
+                this.setStatus('Idle', 'Ready to explore');
+                
+                document.getElementById('btn-start').disabled = false;
+                document.getElementById('btn-pause').disabled = true;
+            }
+
+            start() {
+                this.isPaused = false;
+                document.getElementById('btn-start').disabled = true;
+                document.getElementById('btn-pause').disabled = false;
+                this.tick();
+            }
+
+            pause() {
+                this.isPaused = true;
+                document.getElementById('btn-start').disabled = false;
+                document.getElementById('btn-pause').disabled = true;
+                clearTimeout(this.timer);
+            }
+
+            tick() {
+                if (this.isPaused || this.isFinished) return;
+                this.step();
+                this.timer = setTimeout(() => this.tick(), this.speed);
+            }
+
+            step() {
+                if (this.isFinished) return;
+
+                if (this.currentPathToTarget.length > 0) {
+                    this.moveAlongPath();
+                    return;
+                }
+
+                if (this.isReturningHome) {
+                    this.finishReturn();
+                    return;
+                }
+
+                this.exploreStep();
+            }
+
+            exploreStep() {
+                const { r, c } = this.robotPos;
+                
+                // Get unvisited neighbors in priority order: Forward, Right, Left, Around
+                const candidates = this.getPriorityNeighbors();
+                const unvisitedCandidates = candidates.filter(n => !this.isCellVisited(n.r, n.c));
+
+                if (unvisitedCandidates.length > 0) {
+                    // Pick the best one
+                    const next = unvisitedCandidates[0];
+                    
+                    // If more than one, record as debt
+                    if (unvisitedCandidates.length > 1) {
+                        this.addDebt(r, c, unvisitedCandidates.slice(1));
+                    }
+
+                    this.setStatus('Exploring', `Moving ${next.desc}`);
+                    this.moveTo(next.r, next.c, next.dir);
+                    this.pathHistory.push({r, c}); // For returning home later if needed
+                } else {
+                    // DEAD END - Backtrack to nearest debt
+                    this.handleDeadEnd();
+                }
+
+                this.updateDataUI();
+            }
+
+            getPriorityNeighbors() {
+                const res = [];
+                const pRules = [
+                    { rel: 0, desc: 'Forward' },
+                    { rel: 1, desc: 'Right' },
+                    { rel: 3, desc: 'Left' },
+                    { rel: 2, desc: 'Around' }
+                ];
+
+                pRules.forEach(rule => {
+                    const dirIndex = (this.robotHeading + rule.rel) % 4;
+                    const dir = DIRS[dirIndex];
+                    const nr = this.robotPos.r + dir.dr;
+                    const nc = this.robotPos.c + dir.dc;
+
+                    if (this.isValidMove(nr, nc)) {
+                        res.push({ r: nr, c: nc, dir: dirIndex, desc: rule.desc });
+                    }
+                });
+                return res;
+            }
+
+            handleDeadEnd() {
+                if (this.debtList.length > 0) {
+                    // Find coordinate of the last debt
+                    const target = this.debtList[this.debtList.length - 1];
+                    this.setStatus('Backtracking', 'Returning to debt junction');
+                    this.planPathTo(target.r, target.c);
+                } else {
+                    // MAPPING COMPLETE - Go Home
+                    this.setStatus('Mapping Complete', 'Returning to start point');
+                    this.isReturningHome = true;
+                    this.planPathTo(0, 0);
+                }
+            }
+
+            moveAlongPath() {
+                const next = this.currentPathToTarget.shift();
+                
+                // Determine heading for UI
+                let newHeading = this.robotHeading;
+                DIRS.forEach((d, i) => {
+                    if (d.dr === next.r - this.robotPos.r && d.dc === next.c - this.robotPos.c) {
+                        newHeading = i;
+                    }
+                });
+
+                this.moveTo(next.r, next.c, newHeading);
+                this.updateDataUI();
+
+                if (this.currentPathToTarget.length === 0) {
+                    if (this.isReturningHome && this.robotPos.r === 0 && this.robotPos.c === 0) {
+                        this.setStatus('Finished', 'Back at start');
+                        this.isFinished = true;
+                    } else {
+                        // Arrived at debt junction, check if any debt remains at this specific cell
+                        this.checkDebtResolution();
+                    }
+                }
+            }
+
+            checkDebtResolution() {
+                const { r, c } = this.robotPos;
+                const debtIndex = this.debtList.findIndex(d => d.r === r && d.c === c);
+                
+                if (debtIndex !== -1) {
+                    // Check if there are still unvisited neighbors here
+                    const neighbors = this.getPriorityNeighbors().filter(n => !this.isCellVisited(n.r, n.c));
+                    if (neighbors.length === 0) {
+                        // Debt cleared
+                        this.debtList.splice(debtIndex, 1);
+                        this.debtCor = this.debtCor.filter(dc => dc.junctionR !== r || dc.junctionC !== c);
+                        this.handleDeadEnd(); // Find next debt or go home
+                    } else {
+                        this.setStatus('Exploring', 'Resuming from junction');
+                    }
+                }
+            }
+
+            isValidMove(r, c) {
+                return r >= 0 && r < ROWS && c >= 0 && c < COLS && MAZE_MAP[r][c] === 0;
+            }
+
+            isCellVisited(r, c) {
+                return this.visitedList.some(v => v.r === r && v.c === c);
+            }
+
+            markVisited(r, c) {
+                if (!this.isCellVisited(r, c)) {
+                    this.visitedList.push({ r, c });
+                    this.grid[r][c].classList.add('visited');
+                    this.grid[r][c].classList.remove('unvisited');
+                }
+            }
+
+            addDebt(r, c, unvisitedNeighbors) {
+                if (!this.debtList.some(d => d.r === r && d.c === c)) {
+                    this.debtList.push({ r, c });
+                }
+                
+                unvisitedNeighbors.forEach(n => {
+                    if (!this.debtCor.some(dc => dc.r === n.r && dc.c === n.c)) {
+                        this.debtCor.push({ r: n.r, c: n.c, junctionR: r, junctionC: c });
+                    }
+                });
+            }
+
+            moveTo(r, c, heading) {
+                this.robotPos = { r, c };
+                this.robotHeading = heading;
+                this.markVisited(r, c);
+                this.updateRobotUI();
+            }
+
+            planPathTo(tr, tc) {
+                // Simple BFS for shortest path in mapped area
+                const queue = [[this.robotPos]];
+                const visited = new Set();
+                visited.add(`${this.robotPos.r},${this.robotPos.c}`);
+
+                while (queue.length > 0) {
+                    const path = queue.shift();
+                    const last = path[path.length - 1];
+
+                    if (last.r === tr && last.c === tc) {
+                        this.currentPathToTarget = path.slice(1);
+                        return;
+                    }
+
+                    for (const d of DIRS) {
+                        const nr = last.r + d.dr;
+                        const nc = last.c + d.dc;
+                        const key = `${nr},${nc}`;
+
+                        if (this.isValidMove(nr, nc) && this.isCellVisited(nr, nc) && !visited.has(key)) {
+                            visited.add(key);
+                            queue.push([...path, { r: nr, c: nc }]);
+                        }
+                    }
+                }
+            }
+
+            updateRobotUI() {
+                const robotEl = document.getElementById('robot');
+                const x = this.robotPos.c * (CELL_SIZE + 2) + 4 + 5; // Offset for gap and padding
+                const y = this.robotPos.r * (CELL_SIZE + 2) + 4 + 5;
+                const angle = DIRS[this.robotHeading].angle;
+
+                robotEl.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg)`;
+            }
+
+            updateDataUI() {
+                document.getElementById('visited-list').innerText = JSON.stringify(this.visitedList.map(v => `(${v.r},${v.c})`)).replace(/"/g, '');
+                document.getElementById('debt-list').innerText = JSON.stringify(this.debtList.map(v => `(${v.r},${v.c})`)).replace(/"/g, '');
+                document.getElementById('debt-cor').innerText = JSON.stringify(this.debtCor.map(v => `(${v.r},${v.c})`)).replace(/"/g, '');
+            }
+
+            setStatus(badge, desc) {
+                document.getElementById('status-label').innerText = badge;
+                document.getElementById('action-desc').innerText = desc;
+                
+                // Color coding for status
+                const badgeEl = document.getElementById('status-label');
+                if (badge === 'Backtracking') badgeEl.style.borderColor = 'var(--accent-orange)';
+                else if (badge === 'Finished') badgeEl.style.borderColor = 'var(--accent-cyan)';
+                else badgeEl.style.borderColor = 'var(--accent-cyan)';
+            }
+        }
+
+        // Initialize
+        const demo = new RobotDemo();
+
+    </script>
+</body>
+</html>
